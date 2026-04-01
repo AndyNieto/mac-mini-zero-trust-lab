@@ -12,6 +12,9 @@ ansible/host_vars/*.yml
 CLAUDE.md
 GEMINI.md
 
+# Personal operational notes - not for public sharing
+notes.txt
+
 # macOS
 .DS_Store
 
