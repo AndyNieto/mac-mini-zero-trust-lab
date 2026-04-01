@@ -14,8 +14,9 @@ GEMINI.md
 AGENTS.md
 observability_and_security_pipeline.md
 
-# Personal operational notes - not for public sharing
+# Personal operational notes and internal docs - not for public sharing
 notes.txt
+docs/
 
 # macOS
 .DS_Store
