@@ -8,9 +8,11 @@ kubernetes/apps/security-data/manifests/tenzir-secret.yaml
 ansible/host_vars/*.yml
 !ansible/host_vars/*.yml.example
 
-# AI assistant files with private IPs - replaced by AGENTS.md
+# AI assistant and internal documentation - not for public sharing
 CLAUDE.md
 GEMINI.md
+AGENTS.md
+observability_and_security_pipeline.md
 
 # Personal operational notes - not for public sharing
 notes.txt
