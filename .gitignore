@@ -8,6 +8,10 @@ kubernetes/apps/security-data/manifests/tenzir-secret.yaml
 ansible/host_vars/*.yml
 !ansible/host_vars/*.yml.example
 
+# AI assistant files with private IPs - replaced by AGENTS.md
+CLAUDE.md
+GEMINI.md
+
 # macOS
 .DS_Store
 
