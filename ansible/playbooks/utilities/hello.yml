@@ -1,0 +1,7 @@
+---
+- name: A simple playbook
+  hosts: mac_minis
+  tasks:
+    - name: Print a message
+      ansible.builtin.debug:
+        msg: "Hello, from your Ansible-managed Mac Mini!"

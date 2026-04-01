@@ -1,0 +1,54 @@
+# Kali Linux attack pod
+# A bare Kali rolling release container used as the attacker workstation.
+# It runs in the same vuln-lab namespace so it can reach all targets by
+# their ClusterIP service names (e.g. dvwa.vuln-lab.svc.cluster.local).
+#
+# Usage:
+#   kubectl exec -it -n vuln-lab deployment/kali -- /bin/bash
+#
+# Install tools on first use (examples):
+#   apt-get update && apt-get install -y \
+#     nmap nikto sqlmap curl wget gobuster \
+#     hydra john wfuzz metasploit-framework
+#
+# Or install a full toolset:
+#   apt-get update && apt-get install -y kali-tools-web
+#
+# NOTE: The container image is ~400MB but most attack tools are NOT
+# pre-installed — you install what you need each session, or build
+# a custom image on top of kalilinux/kali-rolling with your tools baked in.
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kali
+  namespace: vuln-lab
+  labels:
+    app: kali
+    component: attacker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kali
+  template:
+    metadata:
+      labels:
+        app: kali
+        component: attacker
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: lima-k3s-master
+      containers:
+      - name: kali
+        image: kalilinux/kali-rolling:latest
+        # Keep the container alive; we exec into it interactively
+        command: ["/bin/sleep", "infinity"]
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 100m
+          limits:
+            memory: 2Gi
+            cpu: 2000m

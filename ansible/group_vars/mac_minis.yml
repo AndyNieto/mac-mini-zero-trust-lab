@@ -1,0 +1,12 @@
+# Shared variables for mac_minis group
+ansible_user: homelab
+ansible_ssh_private_key_file: ~/.ssh/id_ed25519
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+# Lima configuration
+limactl: /opt/homebrew/bin/limactl
+
+# Network configuration
+vm_network: 192.168.64.0/24
+thunderbolt_network: 192.168.20.0/24
+inet_interface: en1

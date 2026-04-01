@@ -1,0 +1,25 @@
+---
+- name: Install Docker Desktop on Mac Mini
+  hosts: mac_minis
+  vars:
+    homebrew_path: /opt/homebrew/bin/brew
+  tasks:
+    - name: Install Docker Desktop
+      community.general.homebrew_cask:
+        name: docker
+        state: present
+      become: false
+      environment:
+        PATH: "/opt/homebrew/bin:{{ ansible_env.PATH }}"
+
+    - name: Check if Docker Desktop is running (optional, for verification)
+      ansible.builtin.command: /Applications/Docker.app/Contents/MacOS/Docker --version
+      register: docker_version_output
+      changed_when: false
+      failed_when: docker_version_output.rc != 0 and "not found" not in docker_version_output.stderr # Allow 'not found' as it might not be fully started
+      ignore_errors: true # Docker might not be running immediately after install
+
+    - name: Display Docker Desktop version (if installed)
+      ansible.builtin.debug:
+        msg: "Docker Desktop Version: {{ docker_version_output.stdout }}"
+      when: docker_version_output.rc == 0

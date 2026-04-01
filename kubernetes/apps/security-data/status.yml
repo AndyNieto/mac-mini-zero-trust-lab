@@ -1,0 +1,50 @@
+- name: Check Security Data Stack Status
+  hosts: macmini-01
+  vars_files:
+    - ../../../ansible/group_vars/mac_minis.yml
+  vars:
+    security_namespace: security-data
+  tasks:
+    - name: Get security-data namespace pods
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ security_namespace }} -o wide"
+      register: security_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Display pods status
+      debug:
+        msg: "{{ security_pods.stdout_lines }}"
+
+    - name: Get security-data services
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get svc -n {{ security_namespace }}"
+      register: security_svc
+      changed_when: false
+      failed_when: false
+
+    - name: Display services
+      debug:
+        msg: "{{ security_svc.stdout_lines }}"
+
+    - name: Check Tenzir health
+      shell: |
+        {{ limactl }} shell k3s-master -- curl -s http://tenzir.{{ security_namespace }}.svc.cluster.local:5158/api/v0/status || echo "Tenzir not responding"
+      register: tenzir_health
+      changed_when: false
+      failed_when: false
+
+    - name: Display Tenzir status
+      debug:
+        msg: "Tenzir health: {{ tenzir_health.stdout }}"
+
+    - name: Display access instructions
+      debug:
+        msg:
+          - "============================================"
+          - "Security Data Stack Access:"
+          - ""
+          - "SSH Tunnel:"
+          - "  ssh -L 5160:192.168.64.2:30160 homelab@192.168.1.118"
+          - ""
+          - "Then open:"
+          - "  Tenzir Web UI: http://localhost:5160"
+          - "============================================"

@@ -1,0 +1,33 @@
+# A Lima configuration for a K3s node
+images:
+# Try to use release-yyyyMMdd image if available. Note that release-yyyyMMdd will be removed after several months.
+- location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-amd64.img"
+  arch: "x86_64"
+- location: "https://cloud-images.ubuntu.com/releases/22.04/release/ubuntu-22.04-server-cloudimg-arm64.img"
+  arch: "aarch64"
+
+# Number of CPUs
+cpus: 2
+
+# Memory size
+memory: "4GiB"
+
+# Disk size
+disk: "30GiB"
+
+# Mounts
+mounts:
+- location: "~"
+  writable: false
+- location: "/tmp/lima"
+  writable: true
+
+# Enable containerd and install it with system privileges
+containerd:
+  system: true
+  user: false
+
+# Network configuration
+networks:
+- lima: bridged
+  interface: "bridge0"

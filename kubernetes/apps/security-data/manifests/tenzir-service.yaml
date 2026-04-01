@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: tenzir
+  namespace: security-data
+  labels:
+    app: tenzir
+spec:
+  type: ClusterIP
+  selector:
+    app: tenzir
+  ports:
+    - name: api
+      port: 5158
+      targetPort: 5158
+      protocol: TCP
+    - name: fluentbit
+      port: 24224
+      targetPort: 24224
+      protocol: TCP

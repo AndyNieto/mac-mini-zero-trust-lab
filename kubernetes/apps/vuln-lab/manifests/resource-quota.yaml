@@ -1,0 +1,15 @@
+# Cap resource consumption for the vuln-lab namespace.
+# Vulnerable apps don't need much; this prevents runaway resource usage
+# if a service is exploited in a way that causes resource exhaustion.
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: vuln-lab-quota
+  namespace: vuln-lab
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 3Gi
+    limits.cpu: "4"
+    limits.memory: 6Gi
+    pods: "12"

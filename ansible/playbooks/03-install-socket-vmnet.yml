@@ -1,0 +1,8 @@
+- name: Install socket_vmnet
+  hosts: mac_minis
+  become: no
+  tasks:
+    - name: Install socket_vmnet Homebrew formula
+      community.general.homebrew:
+        name: socket_vmnet
+        state: present

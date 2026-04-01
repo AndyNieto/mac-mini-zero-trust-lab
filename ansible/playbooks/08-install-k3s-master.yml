@@ -1,0 +1,60 @@
+- name: Install K3s master on Lima VM
+  hosts: macmini-01
+  tasks:
+    - name: Check if K3s is already installed
+      shell: "{{ limactl }} shell k3s-master -- which k3s"
+      register: k3s_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download K3s install script
+      shell: "{{ limactl }} shell k3s-master -- curl -sfL https://get.k3s.io -o /tmp/k3s-install.sh"
+      when: k3s_check.rc != 0
+
+    - name: Install K3s control plane
+      shell: "{{ limactl }} shell k3s-master -- sudo sh /tmp/k3s-install.sh"
+      when: k3s_check.rc != 0
+      register: k3s_install
+
+    - name: Wait for K3s to be ready
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get nodes"
+      register: k3s_ready
+      until: k3s_ready.rc == 0
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Get master node name
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get nodes -o jsonpath='{.items[0].metadata.name}'"
+      register: master_node_name
+      changed_when: false
+
+    - name: Remove NoSchedule taint from master (allow workloads)
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl taint nodes {{ master_node_name.stdout }} node-role.kubernetes.io/master:NoSchedule-"
+      changed_when: false
+      failed_when: false
+
+    - name: Get K3s node token
+      shell: "{{ limactl }} shell k3s-master -- sudo cat /var/lib/rancher/k3s/server/node-token"
+      register: k3s_token
+      changed_when: false
+
+    - name: Display K3s token
+      debug:
+        msg: "K3s node token: {{ k3s_token.stdout }}"
+
+    - name: Save token to local file
+      copy:
+        content: "{{ k3s_token.stdout }}"
+        dest: /tmp/k3s_node_token
+      delegate_to: localhost
+      become: no
+
+    - name: Get cluster status
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get nodes -o wide"
+      register: cluster_status
+      changed_when: false
+
+    - name: Display cluster status
+      debug:
+        msg: "{{ cluster_status.stdout_lines }}"

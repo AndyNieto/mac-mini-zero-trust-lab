@@ -1,0 +1,71 @@
+# Loki Values for K3s Home Lab
+# Chart: grafana/loki (NOT the deprecated loki-stack)
+# Mode: SingleBinary (monolithic) — all components in one pod
+# Storage: filesystem (no object store needed for home lab)
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false
+
+  commonConfig:
+    replication_factor: 1
+
+  storage:
+    type: filesystem
+
+  schemaConfig:
+    configs:
+      - from: "2024-01-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: loki_index_
+          period: 24h
+
+  limits_config:
+    reject_old_samples: true
+    reject_old_samples_max_age: 168h
+    # Increase ingestion limits to handle home lab log volume
+    ingestion_rate_mb: 8
+    ingestion_burst_size_mb: 16
+
+singleBinary:
+  replicas: 1
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
+  persistence:
+    enabled: true
+    size: 10Gi
+  nodeSelector:
+    kubernetes.io/hostname: lima-k3s-master
+
+# Disable microservice-mode components (we use SingleBinary)
+read:
+  replicas: 0
+write:
+  replicas: 0
+backend:
+  replicas: 0
+
+# Disable the built-in gateway (nginx proxy) — not needed for home lab
+gateway:
+  enabled: false
+
+# Disable memcached caches — too memory-heavy for home lab (defaults to ~10GB)
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
+# Disable bundled Grafana/Mimir/etc
+test:
+  enabled: false
+lokiCanary:
+  enabled: false

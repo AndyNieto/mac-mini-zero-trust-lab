@@ -1,0 +1,75 @@
+# OWASP WebGoat
+# An interactive Java-based web security training application.
+# Each lesson teaches a vulnerability through hands-on exercises.
+#
+# Access:
+#   WebGoat UI:  http://localhost:30882/WebGoat  (via SSH tunnel)
+#   WebWolf UI:  http://localhost:30883/WebWolf  (attacker assistance tool)
+#
+# First visit: register a new user on the login page.
+# Note: WebGoat is heavier than the others (~512MB RAM).
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webgoat
+  namespace: vuln-lab
+  labels:
+    app: webgoat
+    component: target
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webgoat
+  template:
+    metadata:
+      labels:
+        app: webgoat
+        component: target
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: lima-k3s-master
+      containers:
+      - name: webgoat
+        image: webgoat/webgoat:2023.4
+        imagePullPolicy: IfNotPresent
+        env:
+        # Bind to all interfaces so the K8s service can reach the app
+        - name: WEBGOAT_HOST
+          value: "0.0.0.0"
+        - name: WEBWOLF_HOST
+          value: "0.0.0.0"
+        ports:
+        - name: webgoat
+          containerPort: 8080
+        - name: webwolf
+          containerPort: 9090
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 100m
+          limits:
+            memory: 1Gi
+            cpu: 1000m
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webgoat
+  namespace: vuln-lab
+spec:
+  type: NodePort
+  selector:
+    app: webgoat
+  ports:
+  - name: webgoat
+    port: 8080
+    targetPort: 8080
+    nodePort: 30882
+  - name: webwolf
+    port: 9090
+    targetPort: 9090
+    nodePort: 30883

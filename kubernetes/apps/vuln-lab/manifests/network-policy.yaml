@@ -1,0 +1,88 @@
+# IMPORTANT: NetworkPolicy enforcement requires a CNI that supports it.
+# K3s ships with Flannel by default, which does NOT enforce NetworkPolicies.
+# These manifests document the intended isolation and will be enforced
+# if you switch the CNI to Canal, Calico, or Cilium.
+#
+# Even without enforcement, these define the security intent:
+#   - All traffic within vuln-lab namespace is allowed (targets can talk to each other,
+#     kali pod can reach all targets)
+#   - Vuln-lab pods cannot reach other namespaces (monitoring, telemetry, security-data)
+#   - DNS resolution (kube-dns) is permitted for name lookups
+#   - No ingress from production namespaces
+
+---
+# 1. Default deny: block all ingress and egress that isn't explicitly allowed
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: vuln-lab
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+
+---
+# 2. Allow all traffic within the vuln-lab namespace
+#    This lets the Kali pod reach DVWA/JuiceShop/WebGoat,
+#    and lets DVWA reach its MariaDB database.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-intra-namespace
+  namespace: vuln-lab
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector: {}
+  egress:
+  - to:
+    - podSelector: {}
+
+---
+# 3. Allow DNS resolution via kube-dns (required for service name lookups
+#    like dvwa-mariadb.vuln-lab.svc.cluster.local)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: vuln-lab
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+
+---
+# 4. Allow Prometheus (monitoring namespace) to scrape metrics from vuln-lab pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-scrape
+  namespace: vuln-lab
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+    ports:
+    - port: 9090
+    - port: 9091

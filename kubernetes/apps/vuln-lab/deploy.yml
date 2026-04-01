@@ -1,0 +1,228 @@
+- name: Deploy Penetration Testing Lab (vuln-lab) to K3s
+  hosts: macmini-01
+  vars_files:
+    - ../../../ansible/group_vars/mac_minis.yml
+  vars:
+    vuln_namespace: vuln-lab
+    manifests_dir: "{{ playbook_dir }}/manifests"
+  tasks:
+
+    # ========================================
+    # Copy Manifests to VM
+    # ========================================
+    - name: Create temp directory for manifests
+      shell: "{{ limactl }} shell k3s-master -- mkdir -p /tmp/vuln-lab-manifests"
+      changed_when: true
+
+    - name: Read and copy namespace manifest
+      block:
+        - name: Read namespace manifest
+          slurp:
+            src: "{{ manifests_dir }}/namespace.yaml"
+          register: namespace_manifest
+          delegate_to: localhost
+
+        - name: Copy namespace manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/vuln-lab-manifests/namespace.yaml << 'ENDOFFILE'
+            {{ namespace_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy network-policy manifest
+      block:
+        - name: Read network-policy manifest
+          slurp:
+            src: "{{ manifests_dir }}/network-policy.yaml"
+          register: network_policy_manifest
+          delegate_to: localhost
+
+        - name: Copy network-policy manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/vuln-lab-manifests/network-policy.yaml << 'ENDOFFILE'
+            {{ network_policy_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy resource-quota manifest
+      block:
+        - name: Read resource-quota manifest
+          slurp:
+            src: "{{ manifests_dir }}/resource-quota.yaml"
+          register: resource_quota_manifest
+          delegate_to: localhost
+
+        - name: Copy resource-quota manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/vuln-lab-manifests/resource-quota.yaml << 'ENDOFFILE'
+            {{ resource_quota_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy dvwa manifest
+      block:
+        - name: Read dvwa manifest
+          slurp:
+            src: "{{ manifests_dir }}/dvwa.yaml"
+          register: dvwa_manifest
+          delegate_to: localhost
+
+        - name: Copy dvwa manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/vuln-lab-manifests/dvwa.yaml << 'ENDOFFILE'
+            {{ dvwa_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy juice-shop manifest
+      block:
+        - name: Read juice-shop manifest
+          slurp:
+            src: "{{ manifests_dir }}/juice-shop.yaml"
+          register: juice_shop_manifest
+          delegate_to: localhost
+
+        - name: Copy juice-shop manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/vuln-lab-manifests/juice-shop.yaml << 'ENDOFFILE'
+            {{ juice_shop_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy webgoat manifest
+      block:
+        - name: Read webgoat manifest
+          slurp:
+            src: "{{ manifests_dir }}/webgoat.yaml"
+          register: webgoat_manifest
+          delegate_to: localhost
+
+        - name: Copy webgoat manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/vuln-lab-manifests/webgoat.yaml << 'ENDOFFILE'
+            {{ webgoat_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy kali manifest
+      block:
+        - name: Read kali manifest
+          slurp:
+            src: "{{ manifests_dir }}/kali.yaml"
+          register: kali_manifest
+          delegate_to: localhost
+
+        - name: Copy kali manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/vuln-lab-manifests/kali.yaml << 'ENDOFFILE'
+            {{ kali_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    # ========================================
+    # Apply Manifests
+    # ========================================
+    - name: Apply namespace
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/vuln-lab-manifests/namespace.yaml"
+      register: ns_result
+      changed_when: "'created' in ns_result.stdout or 'configured' in ns_result.stdout"
+
+    - name: Apply network policies
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/vuln-lab-manifests/network-policy.yaml"
+      register: np_result
+      changed_when: "'created' in np_result.stdout or 'configured' in np_result.stdout"
+
+    - name: Apply resource quota
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/vuln-lab-manifests/resource-quota.yaml"
+      register: rq_result
+      changed_when: "'created' in rq_result.stdout or 'configured' in rq_result.stdout"
+
+    - name: Apply DVWA (MariaDB + web app)
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/vuln-lab-manifests/dvwa.yaml"
+      register: dvwa_result
+      changed_when: "'created' in dvwa_result.stdout or 'configured' in dvwa_result.stdout"
+
+    - name: Apply Juice Shop
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/vuln-lab-manifests/juice-shop.yaml"
+      register: juice_result
+      changed_when: "'created' in juice_result.stdout or 'configured' in juice_result.stdout"
+
+    - name: Apply WebGoat
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/vuln-lab-manifests/webgoat.yaml"
+      register: webgoat_result
+      changed_when: "'created' in webgoat_result.stdout or 'configured' in webgoat_result.stdout"
+
+    - name: Apply Kali attack pod
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/vuln-lab-manifests/kali.yaml"
+      register: kali_result
+      changed_when: "'created' in kali_result.stdout or 'configured' in kali_result.stdout"
+
+    # ========================================
+    # Status Check
+    # ========================================
+    - name: Wait for pods to start (90 seconds — images are large)
+      pause:
+        seconds: 90
+
+    - name: Get vuln-lab pods status
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ vuln_namespace }} -o wide"
+      register: vuln_pods
+      changed_when: false
+
+    - name: Display pods status
+      debug:
+        msg: "{{ vuln_pods.stdout_lines }}"
+
+    - name: Get vuln-lab services
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get svc -n {{ vuln_namespace }}"
+      register: vuln_services
+      changed_when: false
+
+    - name: Display services
+      debug:
+        msg: "{{ vuln_services.stdout_lines }}"
+
+    - name: Display completion message
+      debug:
+        msg:
+          - "============================================================"
+          - "Phase 4: Penetration Testing Lab Deployed!"
+          - "============================================================"
+          - ""
+          - "Targets deployed in namespace: vuln-lab"
+          - "  DVWA        - Damn Vulnerable Web Application (PHP/MySQL)"
+          - "  Juice Shop  - OWASP modern web app (Node.js)"
+          - "  WebGoat     - OWASP interactive training (Java)"
+          - "  Kali        - Attack workstation pod"
+          - ""
+          - "Access via SSH tunnel from your Mac:"
+          - "  ssh -L 30880:192.168.64.2:30880 \\"
+          - "      -L 30881:192.168.64.2:30881 \\"
+          - "      -L 30882:192.168.64.2:30882 \\"
+          - "      -L 30883:192.168.64.2:30883 \\"
+          - "      homelab@192.168.1.118"
+          - ""
+          - "Then open in browser:"
+          - "  DVWA:               http://localhost:30880"
+          - "  DVWA setup page:    http://localhost:30880/setup.php"
+          - "  Juice Shop:         http://localhost:30881"
+          - "  WebGoat:            http://localhost:30882/WebGoat"
+          - "  WebWolf (WebGoat):  http://localhost:30883/WebWolf"
+          - ""
+          - "DVWA first-time setup:"
+          - "  1. Visit http://localhost:30880/setup.php"
+          - "  2. Click 'Create / Reset Database'"
+          - "  3. Login with admin / password"
+          - "  4. Set security level to Low for initial practice"
+          - ""
+          - "Attack from Kali pod:"
+          - "  kubectl exec -it -n vuln-lab deployment/kali -- /bin/bash"
+          - "  # Inside Kali:"
+          - "  apt-get update && apt-get install -y nmap nikto sqlmap curl"
+          - "  nmap dvwa.vuln-lab.svc.cluster.local"
+          - ""
+          - "Network isolation note:"
+          - "  NetworkPolicies are applied but K3s Flannel does NOT enforce them."
+          - "  For real enforcement, switch CNI to Canal or Calico."
+          - "  The vulnerable apps have no internet egress by intent."
+          - "============================================================"

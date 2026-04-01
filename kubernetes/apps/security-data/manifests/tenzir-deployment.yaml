@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tenzir
+  namespace: security-data
+  labels:
+    app: tenzir
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tenzir
+  template:
+    metadata:
+      labels:
+        app: tenzir
+    spec:
+      # Force to master node for debugging (same as other components)
+      nodeSelector:
+        kubernetes.io/hostname: lima-k3s-master
+      containers:
+        - name: tenzir-node
+          image: tenzir/tenzir:latest
+          imagePullPolicy: IfNotPresent
+          command: ["tenzir-node"]
+          args: ["--console-verbosity=debug"]
+          env:
+            - name: TENZIR_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: tenzir-credentials
+                  key: TENZIR_TOKEN
+            - name: TENZIR_PLATFORM_CONTROL_ENDPOINT
+              value: "wss://ws.tenzir.app/production"
+            - name: TENZIR_ENDPOINT
+              value: "0.0.0.0:5158"
+          ports:
+            - name: api
+              containerPort: 5158
+              protocol: TCP
+            - name: fluentbit
+              containerPort: 24224
+              protocol: TCP
+          resources:
+            requests:
+              memory: 1Gi
+              cpu: 200m
+            limits:
+              memory: 1536Mi  # 1.5Gi - ~3x observed stable usage (496Mi)
+              cpu: 1000m
+          volumeMounts:
+            - name: tenzir-lib
+              mountPath: /var/lib/tenzir
+            - name: tenzir-log
+              mountPath: /var/log/tenzir
+          # Disable probes for now - Tenzir may not respond to TCP probes correctly
+          # livenessProbe:
+          #   tcpSocket:
+          #     port: 5158
+          #   initialDelaySeconds: 30
+          #   periodSeconds: 10
+          # readinessProbe:
+          #   tcpSocket:
+          #     port: 5158
+          #   initialDelaySeconds: 10
+          #   periodSeconds: 5
+      volumes:
+        - name: tenzir-lib
+          persistentVolumeClaim:
+            claimName: tenzir-lib
+        - name: tenzir-log
+          persistentVolumeClaim:
+            claimName: tenzir-log
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tenzir-lib
+  namespace: security-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: local-path
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tenzir-log
+  namespace: security-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: local-path

@@ -1,0 +1,8 @@
+- name: Copy Lima VM configuration to Mac Minis
+  hosts: mac_minis
+  become: no
+  tasks:
+    - name: Copy k3s-node.yaml to remote hosts
+      copy:
+        src: ../k3s-node.yaml
+        dest: ~/k3s-node.yaml

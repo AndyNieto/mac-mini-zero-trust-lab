@@ -1,0 +1,28 @@
+- name: Install Lima on Mac Minis
+  hosts: mac_minis
+  become: no
+  tasks:
+    - name: Update Homebrew
+      community.general.homebrew:
+        update_homebrew: yes
+
+    - name: Install lima
+      community.general.homebrew:
+        name: lima
+        state: present
+
+    - name: Verify lima installation
+      command: /opt/homebrew/bin/limactl --version
+      register: lima_version
+      changed_when: false
+      ignore_errors: yes
+
+    - name: Display lima version
+      debug:
+        msg: "Lima version: {{ lima_version.stdout }}"
+      when: lima_version.rc == 0
+
+    - name: Display error if lima not found
+      debug:
+        msg: "limactl command not found at /opt/homebrew/bin/limactl. Please verify the Homebrew installation path."
+      when: lima_version.rc != 0

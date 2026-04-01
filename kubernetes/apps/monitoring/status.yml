@@ -1,0 +1,51 @@
+- name: Check Monitoring Stack Status
+  hosts: macmini-01
+  vars_files:
+    - ../../../ansible/group_vars/mac_minis.yml
+  vars:
+    prometheus_namespace: monitoring
+  tasks:
+    - name: Get monitoring namespace pods
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ prometheus_namespace }} -o wide"
+      register: monitoring_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Display pods status
+      debug:
+        msg: "{{ monitoring_pods.stdout_lines }}"
+
+    - name: Get monitoring services
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get svc -n {{ prometheus_namespace }}"
+      register: monitoring_svc
+      changed_when: false
+      failed_when: false
+
+    - name: Display services
+      debug:
+        msg: "{{ monitoring_svc.stdout_lines }}"
+
+    - name: Get PVCs in monitoring namespace
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pvc -n {{ prometheus_namespace }}"
+      register: monitoring_pvc
+      changed_when: false
+      failed_when: false
+
+    - name: Display PVCs
+      debug:
+        msg: "{{ monitoring_pvc.stdout_lines }}"
+
+    - name: Get VM IP for access URLs
+      shell: "{{ limactl }} shell k3s-master -- hostname -I | awk '{print $1}'"
+      register: vm_ip
+      changed_when: false
+
+    - name: Display access information
+      debug:
+        msg:
+          - "============================================"
+          - "Monitoring Stack Access URLs:"
+          - "  Grafana:      http://{{ vm_ip.stdout }}:30300"
+          - "  Prometheus:   http://{{ vm_ip.stdout }}:30090"
+          - "  Alertmanager: http://{{ vm_ip.stdout }}:30093"
+          - "============================================"

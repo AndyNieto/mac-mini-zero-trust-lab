@@ -1,0 +1,21 @@
+# Promtail Values for K3s Home Lab
+# Chart: grafana/promtail (standalone, replaces the one bundled in loki-stack)
+# Ships logs from all nodes to Loki
+
+config:
+  clients:
+    - url: http://loki.telemetry.svc.cluster.local:3100/loki/api/v1/push
+
+resources:
+  requests:
+    memory: 64Mi
+    cpu: 50m
+  limits:
+    memory: 128Mi
+    cpu: 200m
+
+# Promtail runs as a DaemonSet so it collects logs from every node
+# tolerations allow it to run on master/tainted nodes if needed
+tolerations:
+  - effect: NoSchedule
+    operator: Exists

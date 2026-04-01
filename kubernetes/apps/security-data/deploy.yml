@@ -1,0 +1,211 @@
+- name: Deploy Security Data Stack (Tenzir + OCSF) to K3s
+  hosts: macmini-01
+  vars_files:
+    - ../../../ansible/group_vars/mac_minis.yml
+  vars:
+    security_namespace: security-data
+    manifests_dir: "{{ playbook_dir }}/manifests"
+  tasks:
+    # ========================================
+    # Copy Manifests to VM
+    # ========================================
+    - name: Create temp directory for manifests
+      shell: "{{ limactl }} shell k3s-master -- mkdir -p /tmp/security-data-manifests"
+      changed_when: true
+
+    - name: Read and copy namespace manifest
+      block:
+        - name: Read namespace manifest
+          slurp:
+            src: "{{ manifests_dir }}/namespace.yaml"
+          register: namespace_manifest
+          delegate_to: localhost
+
+        - name: Copy namespace manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/security-data-manifests/namespace.yaml << 'ENDOFFILE'
+            {{ namespace_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy tenzir-secret manifest
+      block:
+        - name: Read tenzir-secret manifest
+          slurp:
+            src: "{{ manifests_dir }}/tenzir-secret.yaml"
+          register: tenzir_secret_manifest
+          delegate_to: localhost
+
+        - name: Copy tenzir-secret manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/security-data-manifests/tenzir-secret.yaml << 'ENDOFFILE'
+            {{ tenzir_secret_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy tenzir-config manifest
+      block:
+        - name: Read tenzir-config manifest
+          slurp:
+            src: "{{ manifests_dir }}/tenzir-config.yaml"
+          register: tenzir_config_manifest
+          delegate_to: localhost
+
+        - name: Copy tenzir-config manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/security-data-manifests/tenzir-config.yaml << 'ENDOFFILE'
+            {{ tenzir_config_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy tenzir-deployment manifest
+      block:
+        - name: Read tenzir-deployment manifest
+          slurp:
+            src: "{{ manifests_dir }}/tenzir-deployment.yaml"
+          register: tenzir_deployment_manifest
+          delegate_to: localhost
+
+        - name: Copy tenzir-deployment manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/security-data-manifests/tenzir-deployment.yaml << 'ENDOFFILE'
+            {{ tenzir_deployment_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy tenzir-service manifest
+      block:
+        - name: Read tenzir-service manifest
+          slurp:
+            src: "{{ manifests_dir }}/tenzir-service.yaml"
+          register: tenzir_service_manifest
+          delegate_to: localhost
+
+        - name: Copy tenzir-service manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/security-data-manifests/tenzir-service.yaml << 'ENDOFFILE'
+            {{ tenzir_service_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy fluent-bit-configmap manifest
+      block:
+        - name: Read fluent-bit-configmap manifest
+          slurp:
+            src: "{{ manifests_dir }}/fluent-bit-configmap.yaml"
+          register: fluent_bit_configmap_manifest
+          delegate_to: localhost
+
+        - name: Copy fluent-bit-configmap manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/security-data-manifests/fluent-bit-configmap.yaml << 'ENDOFFILE'
+            {{ fluent_bit_configmap_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    - name: Read and copy fluent-bit-daemonset manifest
+      block:
+        - name: Read fluent-bit-daemonset manifest
+          slurp:
+            src: "{{ manifests_dir }}/fluent-bit-daemonset.yaml"
+          register: fluent_bit_daemonset_manifest
+          delegate_to: localhost
+
+        - name: Copy fluent-bit-daemonset manifest to VM
+          shell: |
+            {{ limactl }} shell k3s-master -- tee /tmp/security-data-manifests/fluent-bit-daemonset.yaml << 'ENDOFFILE'
+            {{ fluent_bit_daemonset_manifest.content | b64decode }}
+            ENDOFFILE
+          changed_when: true
+
+    # ========================================
+    # Apply Manifests
+    # ========================================
+    - name: Apply namespace
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/security-data-manifests/namespace.yaml"
+      register: ns_result
+      changed_when: "'created' in ns_result.stdout or 'configured' in ns_result.stdout"
+
+    - name: Apply tenzir secret
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/security-data-manifests/tenzir-secret.yaml"
+      register: secret_result
+      changed_when: "'created' in secret_result.stdout or 'configured' in secret_result.stdout"
+
+    - name: Apply tenzir config
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/security-data-manifests/tenzir-config.yaml"
+      register: config_result
+      changed_when: "'created' in config_result.stdout or 'configured' in config_result.stdout"
+
+    - name: Apply tenzir deployment
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/security-data-manifests/tenzir-deployment.yaml"
+      register: deployment_result
+      changed_when: "'created' in deployment_result.stdout or 'configured' in deployment_result.stdout"
+
+    - name: Apply tenzir service
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/security-data-manifests/tenzir-service.yaml"
+      register: service_result
+      changed_when: "'created' in service_result.stdout or 'configured' in service_result.stdout"
+
+    - name: Apply fluent-bit configmap
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/security-data-manifests/fluent-bit-configmap.yaml"
+      register: fb_config_result
+      changed_when: "'created' in fb_config_result.stdout or 'configured' in fb_config_result.stdout"
+
+    - name: Apply fluent-bit daemonset
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f /tmp/security-data-manifests/fluent-bit-daemonset.yaml"
+      register: fb_daemonset_result
+      changed_when: "'created' in fb_daemonset_result.stdout or 'configured' in fb_daemonset_result.stdout"
+
+    # ========================================
+    # Status Check
+    # ========================================
+    - name: Wait for pods to start (60 seconds)
+      pause:
+        seconds: 60
+
+    - name: Get security-data pods status
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ security_namespace }} -o wide"
+      register: security_pods
+      changed_when: false
+
+    - name: Display pods status
+      debug:
+        msg: "{{ security_pods.stdout_lines }}"
+
+    - name: Get security-data services
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get svc -n {{ security_namespace }}"
+      register: security_services
+      changed_when: false
+
+    - name: Display services
+      debug:
+        msg: "{{ security_services.stdout_lines }}"
+
+    - name: Display completion message
+      debug:
+        msg:
+          - "============================================"
+          - "Security Data Stack Deployed!"
+          - "============================================"
+          - ""
+          - "Components:"
+          - "  - Tenzir Node: Security data pipeline"
+          - "  - Fluent Bit: Log forwarding (DaemonSet)"
+          - ""
+          - "Access Tenzir UI:"
+          - "  1. Go to https://app.tenzir.com"
+          - "  2. Your node 'home_lab' should appear connected"
+          - ""
+          - "Data Flow:"
+          - "  Pods (security namespaces) -> Fluent Bit -> Tenzir:24224"
+          - ""
+          - "Namespaces being forwarded:"
+          - "  - kube-system"
+          - "  - vuln-lab"
+          - "  - security-data"
+          - ""
+          - "Next steps:"
+          - "  1. Create Tenzir pipeline: fluent-bit-server | import"
+          - "  2. Verify logs flowing in Tenzir UI"
+          - "  3. Create OCSF transformation pipelines"
+          - "============================================"

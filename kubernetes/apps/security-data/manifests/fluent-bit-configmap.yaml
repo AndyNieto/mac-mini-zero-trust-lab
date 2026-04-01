@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: security-data
+  labels:
+    app: fluent-bit
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush         5
+        Log_Level     info
+        Daemon        off
+        Parsers_File  parsers.conf
+        HTTP_Server   On
+        HTTP_Listen   0.0.0.0
+        HTTP_Port     2020
+
+    # Tail Kubernetes logs
+    [INPUT]
+        Name              tail
+        Tag               kube.*
+        Path              /var/log/pods/*/*/*.log
+        Exclude_Path      /var/log/pods/security-data_fluent-bit*/*/*.log
+        Parser            cri
+        DB                /fluent-bit/db/fluent-bit-pods.db
+        Mem_Buf_Limit     50MB
+        Skip_Long_Lines   On
+        Refresh_Interval  10
+
+    # Skip Kubernetes metadata enrichment for now - forward raw logs
+    # TODO: Fix tag regex pattern for K3s/containerd log format
+
+    # Forward to Tenzir
+    [OUTPUT]
+        Name          forward
+        Match         kube.*
+        Host          tenzir.security-data.svc.cluster.local
+        Port          24224
+        Retry_Limit   5
+
+    # Debug output (optional - comment out in production)
+    [OUTPUT]
+        Name          stdout
+        Match         kube.*
+        Format        json_lines
+
+  parsers.conf: |
+    # CRI Parser for containerd/CRI-O logs
+    [PARSER]
+        Name        cri
+        Format      regex
+        Regex       ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+    # Docker JSON parser (fallback)
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+    # JSON parser for application logs
+    [PARSER]
+        Name        json
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L

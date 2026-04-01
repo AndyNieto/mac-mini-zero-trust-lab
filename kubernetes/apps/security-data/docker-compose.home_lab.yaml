@@ -1,0 +1,32 @@
+
+version: "3.9"
+services:
+  tenzir-node:
+    container_name: "home_lab"
+    image: "tenzir/tenzir:latest"
+    pull_policy: always
+    environment:
+      - TENZIR_TOKEN=${TENZIR_TOKEN}
+      - TENZIR_PLATFORM_CONTROL_ENDPOINT=wss://ws.tenzir.app/production
+      - TENZIR_ENDPOINT=tenzir-node:5158
+    entrypoint:
+      - tenzir-node
+    volumes:
+      - tenzir-lib:/var/lib/tenzir/
+      - tenzir-log:/var/log/tenzir/
+
+  tenzir:
+    image: "tenzir/tenzir:latest"
+    pull_policy: always
+    profiles:
+      - donotstart
+    depends_on:
+      - tenzir-node
+    environment:
+      - TENZIR_ENDPOINT=tenzir-node:5158
+
+volumes:
+  tenzir-lib:
+    driver: local
+  tenzir-log:
+    driver: local

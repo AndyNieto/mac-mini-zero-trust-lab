@@ -1,0 +1,33 @@
+- name: Setup Lima Networking for VDE
+  hosts: mac_minis
+  become: yes
+  tasks:
+    - name: Create /opt/socket_vmnet/bin directory
+      file:
+        path: /opt/socket_vmnet/bin
+        state: directory
+        mode: '0755'
+
+    - name: Copy socket_vmnet executable
+      copy:
+        src: /opt/homebrew/opt/socket_vmnet/bin/socket_vmnet
+        dest: /opt/socket_vmnet/bin/socket_vmnet
+        remote_src: yes
+        mode: '0755'
+
+    - name: Get sudoers content from limactl
+      command: /opt/homebrew/bin/limactl sudoers
+      register: limactl_sudoers
+      become: no
+      changed_when: false
+
+    - name: Create temporary sudoers file
+      copy:
+        content: "{{ limactl_sudoers.stdout }}"
+        dest: /tmp/lima_sudoers
+        mode: '0644'
+      become: no
+
+    - name: Install sudoers file for lima
+      command: install -o root -g wheel -m 0440 /tmp/lima_sudoers /private/etc/sudoers.d/lima
+      changed_when: true

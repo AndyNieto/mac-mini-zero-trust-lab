@@ -1,0 +1,98 @@
+- name: Configure NAT forwarding for Lima VMs over Thunderbolt bridge
+  hosts: mac_minis
+  become: yes
+  tasks:
+    - name: Enable IP forwarding
+      command: sysctl -w net.inet.ip.forwarding=1
+      changed_when: true
+
+    - name: Make IP forwarding persistent
+      lineinfile:
+        path: /etc/sysctl.conf
+        line: "net.inet.ip.forwarding=1"
+        create: yes
+        mode: '0644'
+
+    - name: Create pf anchors directory
+      file:
+        path: /etc/pf.anchors
+        state: directory
+        mode: '0755'
+
+    - name: Create Lima NAT anchor file
+      copy:
+        content: |
+          # NAT rules for Lima VMs to reach Thunderbolt network
+          nat on bridge0 from 192.168.64.0/24 to 192.168.20.0/24 -> {{ thunderbolt_ip }}
+          nat on bridge0 from 192.168.5.0/24 to 192.168.20.0/24 -> {{ thunderbolt_ip }}
+          # NAT rules for Lima VMs to reach internet
+          # 192.168.64.0/24 = vzNAT subnet, 192.168.5.0/24 = socket_vmnet subnet
+          nat on {{ inet_interface | default('en1') }} from 192.168.64.0/24 to any -> ({{ inet_interface | default('en1') }})
+          nat on {{ inet_interface | default('en1') }} from 192.168.5.0/24 to any -> ({{ inet_interface | default('en1') }})
+        dest: /etc/pf.anchors/lima.nat
+        mode: '0644'
+      register: nat_anchor
+
+    - name: Load Lima NAT anchor into pf
+      command: pfctl -a lima.nat -f /etc/pf.anchors/lima.nat
+      when: nat_anchor.changed
+
+    - name: Check if lima.nat anchor is referenced in pf.conf
+      shell: grep -q 'nat-anchor "lima.nat"' /etc/pf.conf
+      register: anchor_check
+      changed_when: false
+      failed_when: false
+
+    - name: Add lima.nat anchor reference to pf.conf
+      lineinfile:
+        path: /etc/pf.conf
+        insertafter: '^nat-anchor "com\.apple/\*"'
+        line: 'nat-anchor "lima.nat"'
+      when: anchor_check.rc != 0
+      register: pf_conf_updated
+
+    - name: Reload pf configuration
+      command: pfctl -f /etc/pf.conf
+      when: pf_conf_updated.changed
+
+    - name: Ensure pf is enabled
+      command: pfctl -e
+      register: pfctl_enable
+      changed_when: "'pf enabled' in pfctl_enable.stderr"
+      failed_when: false
+
+    - name: Create launchd plist for NAT persistence
+      copy:
+        content: |
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>Label</key>
+              <string>com.homelab.lima.nat</string>
+              <key>ProgramArguments</key>
+              <array>
+                  <string>/bin/sh</string>
+                  <string>-c</string>
+                  <string>pfctl -a lima.nat -f /etc/pf.anchors/lima.nat; pfctl -e</string>
+              </array>
+              <key>RunAtLoad</key>
+              <true/>
+          </dict>
+          </plist>
+        dest: /Library/LaunchDaemons/com.homelab.lima.nat.plist
+        mode: '0644'
+      register: nat_plist
+
+    - name: Load NAT launchd service
+      command: launchctl load -w /Library/LaunchDaemons/com.homelab.lima.nat.plist
+      when: nat_plist.changed
+
+    - name: Verify NAT rules are loaded
+      command: pfctl -s nat
+      register: nat_status
+      changed_when: false
+
+    - name: Display NAT status
+      debug:
+        var: nat_status.stdout_lines

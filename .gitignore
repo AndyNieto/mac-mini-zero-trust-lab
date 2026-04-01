@@ -1,0 +1,16 @@
+# Secrets and credentials - never publish
+kubernetes/apps/security-data/manifests/tenzir-secret.yaml
+.env
+.env.*
+!.env.example
+
+# Ansible host_vars with real IPs - use host_vars/*.yml.example instead
+ansible/host_vars/*.yml
+!ansible/host_vars/*.yml.example
+
+# macOS
+.DS_Store
+
+# Editor and AI assistant local config
+.vscode/settings.json
+.claude/

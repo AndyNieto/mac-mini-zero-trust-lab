@@ -1,0 +1,167 @@
+# OpenTelemetry Collector Values for K3s Home Lab
+# Chart: open-telemetry/opentelemetry-collector
+#
+# Architecture:
+#   - Metrics → Prometheus
+#   - Security Logs (by namespace) → Tenzir → OCSF → SIEM
+#   - General Logs → Loki
+#   - Traces → Jaeger (via OTLP gRPC)
+
+mode: deployment
+
+# Image configuration (required in newer chart versions)
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.96.0"
+
+# Force to master node for debugging
+nodeSelector:
+  kubernetes.io/hostname: lima-k3s-master
+
+replicaCount: 1
+
+resources:
+  requests:
+    memory: 256Mi
+    cpu: 100m
+  limits:
+    memory: 512Mi
+    cpu: 500m
+
+# Ports to expose
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+  loki-receiver:
+    enabled: true
+    containerPort: 3500
+    servicePort: 3500
+    protocol: TCP
+
+# Collector configuration
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+    # Receive logs from Promtail via Loki-compatible endpoint
+    loki:
+      protocols:
+        http:
+          endpoint: 0.0.0.0:3500
+      use_incoming_timestamp: true
+
+  processors:
+    batch:
+      timeout: 10s
+      send_batch_size: 1024
+
+    memory_limiter:
+      check_interval: 1s
+      limit_mib: 400
+      spike_limit_mib: 100
+
+    # Add resource attributes
+    resource:
+      attributes:
+        - key: environment
+          value: homelab
+          action: insert
+
+    # Filter for security namespaces → Tenzir
+    filter/security:
+      logs:
+        include:
+          match_type: regexp
+          resource_attributes:
+            - key: k8s.namespace.name
+              value: "^(kube-system|vuln-lab|security-data)$"
+
+    # Filter for non-security namespaces → Loki
+    filter/general:
+      logs:
+        exclude:
+          match_type: regexp
+          resource_attributes:
+            - key: k8s.namespace.name
+              value: "^(kube-system|vuln-lab|security-data)$"
+
+  exporters:
+    # Debug logging
+    debug:
+      verbosity: normal
+      sampling_initial: 5
+      sampling_thereafter: 200
+
+    # Prometheus for metrics
+    prometheusremotewrite:
+      endpoint: "http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/api/v1/write"
+      tls:
+        insecure: true
+
+    # Loki for general logs
+    loki:
+      endpoint: "http://loki.telemetry.svc.cluster.local:3100/loki/api/v1/push"
+      default_labels_enabled:
+        exporter: true
+        level: true
+
+    # Jaeger for traces via OTLP gRPC
+    otlp/jaeger:
+      endpoint: "jaeger.telemetry.svc.cluster.local:4317"
+      tls:
+        insecure: true
+
+    # Tenzir for security logs via OTLP HTTP
+    # Note: fluentforward exporter doesn't exist in OTel Collector
+    # Using otlphttp - Tenzir needs to accept OTLP on this endpoint
+    otlphttp/tenzir:
+      endpoint: "http://tenzir.security-data.svc.cluster.local:5158"
+      tls:
+        insecure: true
+
+  extensions:
+    health_check:
+      endpoint: 0.0.0.0:13133
+
+  service:
+    telemetry:
+      metrics:
+        address: 0.0.0.0:8889
+    extensions: [health_check]
+    pipelines:
+      # Metrics pipeline → Prometheus
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, batch, resource]
+        exporters: [debug]  # TODO: Enable prometheusremotewrite when ready
+
+      # Security logs pipeline → Tenzir (debug for now until integration tested)
+      logs/security:
+        receivers: [otlp, loki]
+        processors: [memory_limiter, filter/security, batch, resource]
+        exporters: [debug]  # TODO: integrate with Tenzir
+
+      # General logs pipeline → Loki
+      logs/general:
+        receivers: [otlp, loki]
+        processors: [memory_limiter, filter/general, batch, resource]
+        exporters: [loki]
+
+      # Traces pipeline → Jaeger
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch, resource]
+        exporters: [otlp/jaeger]

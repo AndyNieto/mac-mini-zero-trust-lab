@@ -1,0 +1,360 @@
+- name: Deploy Telemetry Stack (Loki + OpenTelemetry + Jaeger) to K3s
+  hosts: macmini-01
+  vars_files:
+    - ../../../ansible/group_vars/mac_minis.yml
+  vars:
+    telemetry_namespace: telemetry
+    k3s_kubeconfig: /etc/rancher/k3s/k3s.yaml
+    loki_values_file: "{{ playbook_dir }}/values/loki-stack.yml"
+    promtail_values_file: "{{ playbook_dir }}/values/promtail.yml"
+    otel_values_file: "{{ playbook_dir }}/values/otel-collector.yml"
+    jaeger_values_file: "{{ playbook_dir }}/values/jaeger.yml"
+  tasks:
+    # ========================================
+    # Prerequisites
+    # ========================================
+    - name: Verify Helm is installed
+      shell: "{{ limactl }} shell k3s-master -- sudo helm version --short"
+      register: helm_version
+      changed_when: false
+
+    - name: Display Helm version
+      debug:
+        msg: "Helm version: {{ helm_version.stdout }}"
+
+    # ========================================
+    # Namespace Setup
+    # ========================================
+    - name: Create telemetry namespace
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl create namespace {{ telemetry_namespace }}"
+      register: ns_create
+      changed_when: ns_create.rc == 0
+      failed_when: false
+
+    # ========================================
+    # Loki Deployment (grafana/loki — replaces deprecated loki-stack)
+    # ========================================
+    - name: Add Grafana Helm repo
+      shell: "{{ limactl }} shell k3s-master -- sudo helm repo add grafana https://grafana.github.io/helm-charts"
+      register: grafana_repo
+      changed_when: "'has been added' in grafana_repo.stdout"
+      failed_when: false
+
+    - name: Update Helm repos
+      shell: "{{ limactl }} shell k3s-master -- sudo helm repo update"
+      changed_when: false
+
+    # Remove the old deprecated loki-stack release if it exists
+    - name: Check for old loki-stack release
+      shell: "{{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} list -n {{ telemetry_namespace }} -q"
+      register: helm_releases_pre
+      changed_when: false
+
+    - name: Uninstall old loki-stack release
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} uninstall loki-stack \
+          --namespace {{ telemetry_namespace }}
+      when: "'loki-stack' in helm_releases_pre.stdout"
+
+    - name: Delete old Loki PVC (corrupted index data from crashed installs)
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo k3s kubectl delete pvc \
+          -n {{ telemetry_namespace }} \
+          -l app=loki --ignore-not-found
+      when: "'loki-stack' in helm_releases_pre.stdout"
+
+    - name: Read Loki values file
+      slurp:
+        src: "{{ loki_values_file }}"
+      register: loki_values_content
+      delegate_to: localhost
+
+    - name: Copy Loki values file to VM
+      shell: |
+        {{ limactl }} shell k3s-master -- tee /tmp/loki-values.yaml << 'EOF'
+        {{ loki_values_content.content | b64decode }}
+        EOF
+      changed_when: true
+
+    - name: Check current Helm releases
+      shell: "{{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} list -n {{ telemetry_namespace }} -q"
+      register: helm_releases
+      changed_when: false
+
+    - name: Install Loki
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} install loki grafana/loki \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/loki-values.yaml \
+          --timeout 10m
+      when: "'loki' not in helm_releases.stdout"
+      register: loki_install
+
+    - name: Upgrade Loki (if already installed)
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} upgrade loki grafana/loki \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/loki-values.yaml \
+          --timeout 10m
+      when: "'loki' in helm_releases.stdout"
+      register: loki_upgrade
+
+    # ========================================
+    # Promtail Deployment (standalone chart — replaces bundled promtail in loki-stack)
+    # ========================================
+    - name: Read Promtail values file
+      slurp:
+        src: "{{ promtail_values_file }}"
+      register: promtail_values_content
+      delegate_to: localhost
+
+    - name: Copy Promtail values file to VM
+      shell: |
+        {{ limactl }} shell k3s-master -- tee /tmp/promtail-values.yaml << 'EOF'
+        {{ promtail_values_content.content | b64decode }}
+        EOF
+      changed_when: true
+
+    - name: Check Helm releases for Promtail
+      shell: "{{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} list -n {{ telemetry_namespace }} -q"
+      register: helm_releases_promtail
+      changed_when: false
+
+    - name: Install Promtail
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} install promtail grafana/promtail \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/promtail-values.yaml \
+          --timeout 5m
+      when: "'promtail' not in helm_releases_promtail.stdout"
+      register: promtail_install
+
+    - name: Upgrade Promtail (if already installed)
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} upgrade promtail grafana/promtail \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/promtail-values.yaml \
+          --timeout 5m
+      when: "'promtail' in helm_releases_promtail.stdout"
+      register: promtail_upgrade
+
+    # ========================================
+    # OpenTelemetry Collector Deployment
+    # ========================================
+    - name: Add OpenTelemetry Helm repo
+      shell: "{{ limactl }} shell k3s-master -- sudo helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts"
+      register: otel_repo
+      changed_when: "'has been added' in otel_repo.stdout"
+      failed_when: false
+
+    - name: Update Helm repos again
+      shell: "{{ limactl }} shell k3s-master -- sudo helm repo update"
+      changed_when: false
+
+    - name: Read OpenTelemetry values file
+      slurp:
+        src: "{{ otel_values_file }}"
+      register: otel_values_content
+      delegate_to: localhost
+
+    - name: Copy OpenTelemetry values file to VM
+      shell: |
+        {{ limactl }} shell k3s-master -- tee /tmp/otel-values.yaml << 'EOF'
+        {{ otel_values_content.content | b64decode }}
+        EOF
+      changed_when: true
+
+    - name: Check Helm releases again
+      shell: "{{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} list -n {{ telemetry_namespace }} -q"
+      register: helm_releases_updated
+      changed_when: false
+
+    - name: Install OpenTelemetry Collector
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} install otel-collector open-telemetry/opentelemetry-collector \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/otel-values.yaml \
+          --timeout 10m
+      when: "'otel-collector' not in helm_releases_updated.stdout"
+      register: otel_install
+
+    - name: Upgrade OpenTelemetry Collector (if already installed)
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} upgrade otel-collector open-telemetry/opentelemetry-collector \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/otel-values.yaml \
+          --timeout 10m
+      when: "'otel-collector' in helm_releases_updated.stdout"
+      register: otel_upgrade
+
+    # ========================================
+    # Jaeger Deployment (Distributed Tracing)
+    # ========================================
+    - name: Add Jaeger Helm repo
+      shell: "{{ limactl }} shell k3s-master -- sudo helm repo add jaegertracing https://jaegertracing.github.io/helm-charts"
+      register: jaeger_repo
+      changed_when: "'has been added' in jaeger_repo.stdout"
+      failed_when: false
+
+    - name: Update Helm repos for Jaeger
+      shell: "{{ limactl }} shell k3s-master -- sudo helm repo update"
+      changed_when: false
+
+    - name: Read Jaeger values file
+      slurp:
+        src: "{{ jaeger_values_file }}"
+      register: jaeger_values_content
+      delegate_to: localhost
+
+    - name: Copy Jaeger values file to VM
+      shell: |
+        {{ limactl }} shell k3s-master -- tee /tmp/jaeger-values.yaml << 'EOF'
+        {{ jaeger_values_content.content | b64decode }}
+        EOF
+      changed_when: true
+
+    - name: Check Helm releases for Jaeger
+      shell: "{{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} list -n {{ telemetry_namespace }} -q"
+      register: helm_releases_jaeger
+      changed_when: false
+
+    - name: Install Jaeger
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} install jaeger jaegertracing/jaeger \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/jaeger-values.yaml \
+          --timeout 10m
+      when: "'jaeger' not in helm_releases_jaeger.stdout"
+      register: jaeger_install
+
+    - name: Upgrade Jaeger (if already installed)
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo helm --kubeconfig {{ k3s_kubeconfig }} upgrade jaeger jaegertracing/jaeger \
+          --namespace {{ telemetry_namespace }} \
+          --values /tmp/jaeger-values.yaml \
+          --timeout 10m
+      when: "'jaeger' in helm_releases_jaeger.stdout"
+      register: jaeger_upgrade
+
+    # Expose Jaeger UI via NodePort (accessible through SSH tunnel)
+    - name: Create Jaeger NodePort service
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f - << 'EOF'
+        apiVersion: v1
+        kind: Service
+        metadata:
+          name: jaeger-ui-nodeport
+          namespace: {{ telemetry_namespace }}
+        spec:
+          type: NodePort
+          selector:
+            app.kubernetes.io/name: jaeger
+            app.kubernetes.io/component: all-in-one
+          ports:
+            - name: query-ui
+              port: 16686
+              targetPort: 16686
+              nodePort: 30686
+        EOF
+      changed_when: true
+
+    # ========================================
+    # Configure Grafana Datasources
+    # ========================================
+    - name: Create Loki datasource ConfigMap for Grafana
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f - << 'EOF'
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: grafana-loki-datasource
+          namespace: monitoring
+          labels:
+            grafana_datasource: "1"
+        data:
+          loki-datasource.yaml: |
+            apiVersion: 1
+            datasources:
+              - name: Loki
+                type: loki
+                access: proxy
+                url: http://loki.telemetry.svc.cluster.local:3100
+                isDefault: false
+                editable: true
+        EOF
+      changed_when: true
+
+    - name: Create Jaeger datasource ConfigMap for Grafana
+      shell: |
+        {{ limactl }} shell k3s-master -- sudo k3s kubectl apply -f - << 'EOF'
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: grafana-jaeger-datasource
+          namespace: monitoring
+          labels:
+            grafana_datasource: "1"
+        data:
+          jaeger-datasource.yaml: |
+            apiVersion: 1
+            datasources:
+              - name: Jaeger
+                type: jaeger
+                access: proxy
+                url: http://jaeger.telemetry.svc.cluster.local:16686
+                isDefault: false
+                editable: true
+        EOF
+      changed_when: true
+
+    # ========================================
+    # Status Check
+    # ========================================
+    - name: Wait for pods to start (30 seconds)
+      pause:
+        seconds: 30
+
+    - name: Get telemetry pods status
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ telemetry_namespace }} -o wide"
+      register: telemetry_pods
+      changed_when: false
+
+    - name: Display telemetry pods
+      debug:
+        msg: "{{ telemetry_pods.stdout_lines }}"
+
+    - name: Get telemetry services
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get svc -n {{ telemetry_namespace }}"
+      register: telemetry_services
+      changed_when: false
+
+    - name: Display telemetry services
+      debug:
+        msg: "{{ telemetry_services.stdout_lines }}"
+
+    - name: Display completion message
+      debug:
+        msg:
+          - "============================================"
+          - "Telemetry Stack Deployed!"
+          - "============================================"
+          - ""
+          - "Components:"
+          - "  - Loki: Log aggregation"
+          - "  - Promtail: Log shipping (DaemonSet on all nodes)"
+          - "  - OpenTelemetry Collector: Trace/metric/log processing"
+          - "  - Jaeger: Distributed tracing (all-in-one, in-memory)"
+          - ""
+          - "Access Loki via Grafana:"
+          - "  1. Open Grafana (http://localhost:3000)"
+          - "  2. Go to Explore → Select 'Loki' datasource"
+          - "  3. Query: {namespace=\"monitoring\"}"
+          - ""
+          - "Access Jaeger UI:"
+          - "  1. SSH tunnel: ssh -L 16686:192.168.64.2:30686 homelab@192.168.1.118"
+          - "  2. Open http://localhost:16686"
+          - "  3. Or use Grafana Explore → Select 'Jaeger' datasource"
+          - ""
+          - "Note: Grafana may need to restart to pick up new datasources:"
+          - "      kubectl rollout restart deployment prometheus-grafana -n monitoring"
+          - "============================================"

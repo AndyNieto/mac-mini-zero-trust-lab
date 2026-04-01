@@ -1,0 +1,64 @@
+- name: Check Telemetry Stack Status
+  hosts: macmini-01
+  vars_files:
+    - ../../../ansible/group_vars/mac_minis.yml
+  vars:
+    telemetry_namespace: telemetry
+  tasks:
+    - name: Get telemetry namespace pods
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ telemetry_namespace }} -o wide"
+      register: telemetry_pods
+      changed_when: false
+      failed_when: false
+
+    - name: Display pods status
+      debug:
+        msg: "{{ telemetry_pods.stdout_lines }}"
+
+    - name: Get telemetry services
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get svc -n {{ telemetry_namespace }}"
+      register: telemetry_svc
+      changed_when: false
+      failed_when: false
+
+    - name: Display services
+      debug:
+        msg: "{{ telemetry_svc.stdout_lines }}"
+
+    - name: Get Helm releases in telemetry namespace
+      shell: "{{ limactl }} shell k3s-master -- helm --kubeconfig /etc/rancher/k3s/k3s.yaml list -n {{ telemetry_namespace }}"
+      register: helm_releases
+      changed_when: false
+      failed_when: false
+
+    - name: Display Helm releases
+      debug:
+        msg: "{{ helm_releases.stdout_lines }}"
+
+    - name: Check Loki is receiving logs
+      shell: |
+        {{ limactl }} shell k3s-master -- curl -s "http://loki-stack-loki.{{ telemetry_namespace }}.svc.cluster.local:3100/ready"
+      register: loki_ready
+      changed_when: false
+      failed_when: false
+
+    - name: Display Loki status
+      debug:
+        msg: "Loki ready status: {{ loki_ready.stdout }}"
+
+    - name: Display access instructions
+      debug:
+        msg:
+          - "============================================"
+          - "Telemetry Stack Access:"
+          - ""
+          - "View logs in Grafana:"
+          - "  1. Open http://localhost:3000"
+          - "  2. Click Explore (compass icon)"
+          - "  3. Select 'Loki' from datasource dropdown"
+          - "  4. Try query: {namespace=\"monitoring\"}"
+          - ""
+          - "OpenTelemetry Collector endpoints:"
+          - "  OTLP gRPC: otel-collector:4317"
+          - "  OTLP HTTP: otel-collector:4318"
+          - "============================================"

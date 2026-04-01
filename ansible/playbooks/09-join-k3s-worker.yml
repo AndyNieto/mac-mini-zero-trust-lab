@@ -1,0 +1,48 @@
+- name: Join K3s worker to cluster
+  hosts: macmini-02
+  vars:
+    k3s_master_url: "https://192.168.20.118:6443"
+  tasks:
+    - name: Read K3s token from local file
+      set_fact:
+        k3s_token: "{{ lookup('file', '/tmp/k3s_node_token') }}"
+      delegate_to: localhost
+
+    - name: Check if K3s is already installed
+      shell: "{{ limactl }} shell k3s-worker -- which k3s"
+      register: k3s_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download K3s install script
+      shell: "{{ limactl }} shell k3s-worker -- curl -sfL https://get.k3s.io -o /tmp/k3s-install.sh"
+      when: k3s_check.rc != 0
+
+    - name: Join K3s cluster as worker
+      shell: "{{ limactl }} shell k3s-worker -- sudo env K3S_URL={{ k3s_master_url }} K3S_TOKEN={{ k3s_token }} sh /tmp/k3s-install.sh"
+      when: k3s_check.rc != 0
+      register: k3s_join
+
+    - name: Wait for k3s-agent service to start
+      shell: "{{ limactl }} shell k3s-worker -- sudo systemctl is-active k3s-agent"
+      register: worker_ready
+      until: worker_ready.stdout == 'active'
+      retries: 30
+      delay: 10
+      changed_when: false
+      failed_when: false
+
+- name: Verify cluster status from master
+  hosts: macmini-01
+  tasks:
+    - name: Wait for worker node to be Ready
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get nodes"
+      register: cluster_status
+      until: "'Ready' in cluster_status.stdout"
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Display final cluster status
+      debug:
+        msg: "{{ cluster_status.stdout_lines }}"

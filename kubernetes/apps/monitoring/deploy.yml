@@ -1,0 +1,143 @@
+- name: Deploy Prometheus Stack to K3s
+  hosts: macmini-01
+  vars_files:
+    - ../../../ansible/group_vars/mac_minis.yml
+  vars:
+    prometheus_namespace: monitoring
+    values_file: "{{ playbook_dir }}/values/prometheus-stack.yml"
+    k3s_kubeconfig: /etc/rancher/k3s/k3s.yaml
+  tasks:
+    - name: Check if Helm is installed
+      shell: "{{ limactl }} shell k3s-master -- which helm"
+      register: helm_check
+      changed_when: false
+      failed_when: false
+
+    - name: Download Helm install script
+      shell: "{{ limactl }} shell k3s-master -- curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 -o /tmp/get_helm.sh"
+      when: helm_check.rc != 0
+
+    - name: Install Helm
+      shell: "{{ limactl }} shell k3s-master -- sudo bash /tmp/get_helm.sh"
+      when: helm_check.rc != 0
+
+    - name: Verify Helm installation
+      shell: "{{ limactl }} shell k3s-master -- helm version --short"
+      register: helm_version_output
+      changed_when: false
+
+    - name: Display Helm version
+      debug:
+        msg: "Helm version: {{ helm_version_output.stdout }}"
+
+    - name: Add prometheus-community Helm repo
+      shell: "{{ limactl }} shell k3s-master -- helm repo add prometheus-community https://prometheus-community.github.io/helm-charts"
+      register: helm_repo_add
+      changed_when: "'has been added' in helm_repo_add.stdout"
+      failed_when: false
+
+    - name: Update Helm repos
+      shell: "{{ limactl }} shell k3s-master -- helm repo update"
+      changed_when: false
+
+    - name: Make k3s kubeconfig readable
+      shell: "{{ limactl }} shell k3s-master -- sudo chmod 644 {{ k3s_kubeconfig }}"
+      changed_when: false
+
+    - name: Create monitoring namespace
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl create namespace {{ prometheus_namespace }}"
+      register: ns_create
+      changed_when: ns_create.rc == 0
+      failed_when: false
+
+    - name: Read local values file
+      slurp:
+        src: "{{ values_file }}"
+      register: values_content
+      delegate_to: localhost
+
+    - name: Copy Prometheus values file to VM
+      shell: |
+        {{ limactl }} shell k3s-master -- tee /tmp/prometheus-values.yaml << 'EOF'
+        {{ values_content.content | b64decode }}
+        EOF
+      changed_when: true
+
+    - name: Check if prometheus stack is already installed
+      shell: "{{ limactl }} shell k3s-master -- helm --kubeconfig {{ k3s_kubeconfig }} list -n {{ prometheus_namespace }} -q"
+      register: helm_releases
+      changed_when: false
+
+    - name: Install kube-prometheus-stack
+      shell: |
+        {{ limactl }} shell k3s-master -- helm --kubeconfig {{ k3s_kubeconfig }} install prometheus prometheus-community/kube-prometheus-stack \
+          --namespace {{ prometheus_namespace }} \
+          --values /tmp/prometheus-values.yaml \
+          --timeout 10m
+      when: "'prometheus' not in helm_releases.stdout"
+      register: prometheus_install
+
+    - name: Upgrade kube-prometheus-stack (if already installed)
+      shell: |
+        {{ limactl }} shell k3s-master -- helm --kubeconfig {{ k3s_kubeconfig }} upgrade prometheus prometheus-community/kube-prometheus-stack \
+          --namespace {{ prometheus_namespace }} \
+          --values /tmp/prometheus-values.yaml \
+          --timeout 10m
+      when: "'prometheus' in helm_releases.stdout"
+      register: prometheus_upgrade
+
+    - name: Wait for pods to start (30 seconds)
+      pause:
+        seconds: 30
+
+    - name: Check pod status (may still be starting)
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ prometheus_namespace }}"
+      register: pod_status
+      changed_when: false
+
+    - name: Display current pod status
+      debug:
+        msg: "{{ pod_status.stdout_lines }}"
+
+    - name: Get monitoring pods status
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get pods -n {{ prometheus_namespace }} -o wide"
+      register: monitoring_pods
+      changed_when: false
+
+    - name: Display monitoring pods
+      debug:
+        msg: "{{ monitoring_pods.stdout_lines }}"
+
+    - name: Get monitoring services
+      shell: "{{ limactl }} shell k3s-master -- sudo k3s kubectl get svc -n {{ prometheus_namespace }}"
+      register: monitoring_services
+      changed_when: false
+
+    - name: Display monitoring services
+      debug:
+        msg: "{{ monitoring_services.stdout_lines }}"
+
+    - name: Get VM IP address
+      shell: "{{ limactl }} shell k3s-master -- hostname -I | awk '{print $1}'"
+      register: vm_ip
+      changed_when: false
+
+    - name: Display access information
+      debug:
+        msg:
+          - "============================================"
+          - "Prometheus Stack Deployed Successfully!"
+          - "============================================"
+          - ""
+          - "Access URLs (from Mac host):"
+          - "  Grafana:      http://{{ vm_ip.stdout }}:30300"
+          - "  Prometheus:   http://{{ vm_ip.stdout }}:30090"
+          - "  Alertmanager: http://{{ vm_ip.stdout }}:30093"
+          - ""
+          - "Grafana Credentials:"
+          - "  Username: admin"
+          - "  Password: homelab-admin"
+          - ""
+          - "To access from host machine:"
+          - "  limactl shell k3s-master -- sudo k3s kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80"
+          - "============================================"

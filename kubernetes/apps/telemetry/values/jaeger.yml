@@ -1,0 +1,20 @@
+# Jaeger Values for K3s Home Lab
+# Chart: jaegertracing/jaeger (v4.x — Jaeger v2)
+#
+# Jaeger v2 is built on the OTel Collector — it's a single binary
+# that natively supports OTLP, in-memory storage, and the query UI.
+# No need for separate collector/query/agent components.
+#
+# Access the UI via NodePort 30686
+
+jaeger:
+  # Force to master node (same as other telemetry pods)
+  nodeSelector:
+    kubernetes.io/hostname: lima-k3s-master
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
