@@ -4,7 +4,7 @@ images:
   arch: "aarch64"
 
 cpus: 2
-memory: "4GiB"
+memory: "6GiB"
 disk: "30GiB"
 
 mounts:
