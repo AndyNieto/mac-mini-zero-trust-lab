@@ -152,7 +152,7 @@ config:
       logs/security:
         receivers: [otlp, loki]
         processors: [memory_limiter, filter/security, batch, resource]
-        exporters: [debug]  # TODO: integrate with Tenzir
+        exporters: [debug, otlphttp/tenzir]  # TODO: Remove debug once Tenzir integration is verified
 
       # General logs pipeline → Loki
       logs/general:
