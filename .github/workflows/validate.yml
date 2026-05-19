@@ -1,0 +1,46 @@
+name: Validate IaC
+
+# Runs on every push and on every Pull Request targeting main
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+
+  # Job 1: Validate Kubernetes manifests
+  validate-kubernetes:
+    name: Validate Kubernetes YAML
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate manifests
+        run: |
+          find kubernetes/apps -path "*/manifests/*.yaml" -o -path "*/manifests/*.yml" \
+            | xargs kubeconform \
+                -strict \
+                -ignore-missing-schemas \
+                -summary
+
+  # Job 2: Lint Ansible playbooks
+  lint-ansible:
+    name: Lint Ansible Playbooks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ansible-lint
+        run: pip install ansible-lint
+
+      - name: Run ansible-lint
+        run: ansible-lint ansible/playbooks/
