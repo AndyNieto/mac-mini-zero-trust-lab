@@ -1,0 +1,8 @@
+skip_list:
+  # Playbooks use ../files/ paths relative to playbook location, not role structure.
+  # Fixing this requires reorganizing into Ansible roles — tracked as future work.
+  - no-relative-paths
+
+  # Some tasks use changed_when: true for commands that don't have reliable
+  # idempotency checks (e.g. launchctl load). Tracked as future improvement.
+  - no-changed-when
