@@ -3,6 +3,21 @@ skip_list:
   # Fixing this requires reorganizing into Ansible roles — tracked as future work.
   - no-relative-paths
 
-  # Some tasks use changed_when: true for commands that don't have reliable
-  # idempotency checks (e.g. launchctl load). Tracked as future improvement.
+  # Some tasks use changed_when: true for commands without reliable idempotency
+  # checks (e.g. launchctl load). Tracked as future improvement.
   - no-changed-when
+
+  # Tasks that trigger on X.changed should use handlers. Requires playbook
+  # restructuring — tracked as future work.
+  - no-handler
+
+  # limactl commands use shell features and environment variable passing that
+  # require ansible.builtin.shell. Acceptable for this use case.
+  - command-instead-of-shell
+
+  # Some copy tasks intentionally inherit directory permissions.
+  # Explicit mode will be added when playbooks are refactored into roles.
+  - risky-file-permissions
+
+  # One long line in a shell command. Not worth breaking for readability.
+  - yaml[line-length]
