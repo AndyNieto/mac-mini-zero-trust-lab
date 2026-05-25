@@ -1,14 +1,14 @@
 - name: Update launchd service for Lima socket_vmnet
   hosts: macmini-01
-  become: yes
+  become: true
   tasks:
     - name: Unload existing launchd service if it exists
-      command: launchctl unload /Library/LaunchDaemons/com.homelab.lima.socket_vmnet.bridge0.plist
+      ansible.builtin.command: launchctl unload /Library/LaunchDaemons/com.homelab.lima.socket_vmnet.bridge0.plist
       changed_when: false
-      failed_when: false # Don't fail if the service wasn't loaded
+      failed_when: false
 
     - name: Copy updated launchd plist file
-      copy:
+      ansible.builtin.copy:
         src: ../updated.com.homelab.lima.socket_vmnet.bridge0.plist
         dest: /Library/LaunchDaemons/com.homelab.lima.socket_vmnet.bridge0.plist
         owner: root
@@ -16,5 +16,5 @@
         mode: '0644'
 
     - name: Load launchd service
-      command: launchctl load -w /Library/LaunchDaemons/com.homelab.lima.socket_vmnet.bridge0.plist
+      ansible.builtin.command: launchctl load -w /Library/LaunchDaemons/com.homelab.lima.socket_vmnet.bridge0.plist
       changed_when: true

@@ -1,10 +1,10 @@
 - name: Install Lima on Mac Minis
   hosts: mac_minis
-  become: no
+  become: false
   tasks:
     - name: Update Homebrew
       community.general.homebrew:
-        update_homebrew: yes
+        update_homebrew: true
 
     - name: Install lima
       community.general.homebrew:
@@ -12,17 +12,17 @@
         state: present
 
     - name: Verify lima installation
-      command: /opt/homebrew/bin/limactl --version
+      ansible.builtin.command: /opt/homebrew/bin/limactl --version
       register: lima_version
       changed_when: false
-      ignore_errors: yes
+      ignore_errors: true
 
     - name: Display lima version
-      debug:
+      ansible.builtin.debug:
         msg: "Lima version: {{ lima_version.stdout }}"
       when: lima_version.rc == 0
 
     - name: Display error if lima not found
-      debug:
+      ansible.builtin.debug:
         msg: "limactl command not found at /opt/homebrew/bin/limactl. Please verify the Homebrew installation path."
       when: lima_version.rc != 0
