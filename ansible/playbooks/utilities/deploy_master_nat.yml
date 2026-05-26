@@ -1,8 +1,8 @@
 - name: Copy NAT-based Lima configuration to macmini-01
   hosts: macmini-01
-  become: no
+  become: false
   tasks:
     - name: Copy k3s-master-nat.yaml to macmini-01
-      copy:
+      ansible.builtin.copy:
         src: ../k3s-master-nat.yaml
         dest: ~/k3s-master.yaml

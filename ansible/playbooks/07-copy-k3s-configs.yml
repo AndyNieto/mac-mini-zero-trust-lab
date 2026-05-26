@@ -1,15 +1,15 @@
 - name: Copy K3s Lima configurations to Mac Minis
   hosts: mac_minis
-  become: no
+  become: false
   tasks:
     - name: Copy k3s-master.yaml to macmini-01
-      copy:
+      ansible.builtin.copy:
         src: ../k3s-master.yaml
         dest: ~/k3s-master.yaml
       when: inventory_hostname == 'macmini-01'
 
     - name: Copy k3s-worker.yaml to macmini-02
-      copy:
+      ansible.builtin.copy:
         src: ../k3s-worker.yaml
         dest: ~/k3s-worker.yaml
       when: inventory_hostname == 'macmini-02'
